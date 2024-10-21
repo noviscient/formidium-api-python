@@ -1,10 +1,14 @@
+import logging
 import time
 import base64
 import datetime
 
 import requests
-from requests.models import Response
+from requests.exceptions import JSONDecodeError
 from tzlocal import get_localzone_name
+
+
+class ApiError(Exception): ...
 
 
 class Api:
@@ -53,7 +57,9 @@ class Api:
 
         # Create the cipher using AES-256 in CBC mode
         cipher = ciphers.Cipher(
-            ciphers.algorithms.AES(derived_key), ciphers.modes.CBC(iv), backend=backend
+            ciphers.algorithms.AES(derived_key),  # type: ignore
+            ciphers.modes.CBC(iv),  # type: ignore
+            backend=backend,
         )
 
         # Encrypt the data
@@ -79,16 +85,32 @@ class Api:
         }
         return header
 
-    def _make_post_request(self, endpoint: str, data: dict) -> Response:
+    def _make_post_request(self, endpoint: str, data: dict) -> dict:
         base_url = self.base_url.rstrip("/")
         endpoint = endpoint.lstrip("/")
-        url = f"{base_url}{endpoint}"
+        url = f"{base_url}/{endpoint}"
 
-        return requests.post(url, json=data, headers=self.header)
+        logging.info(f"Making POST request to {url}\nData: {data}")
+
+        # response always has a status code of 200
+        # response["title"] is either "Error" or "Success"
+        resp = requests.post(url, json=data, headers=self.header)
+        try:
+            data = resp.json()
+        except JSONDecodeError:
+            raise ApiError(f"Can't jsonify the response - detail: {resp.text}")
+
+        if data["title"] == "Error":
+            raise ApiError(data["errorObject"])
+
+        logging.info("Request succeeded!")
+        logging.debug(f"Response: {data}")
+
+        return data["responseBody"]
 
     def portfolio_extract(
         self, fund_name: str, start_date: datetime.date, end_date: datetime.date
-    ) -> Response:
+    ) -> dict:
         """A portfolio extract of the fund over a date range."""
 
         ENDPOINT = "portfolioExtract"
@@ -105,8 +127,8 @@ class Api:
         fund_name: str,
         start_date: datetime.date,
         end_date: datetime.date,
-        investor_number: str,
-    ) -> Response:
+        investor_number: str | None = None,
+    ) -> dict:
         """Investor allocation for a specific investor over a date range."""
 
         ENDPOINT = "investorAllocationAllFrequency"
@@ -121,7 +143,7 @@ class Api:
 
     def trades(
         self, fund_name: str, start_date: datetime.date, end_date: datetime.date
-    ) -> Response:
+    ) -> dict:
         """Trades for the fund over a date range."""
 
         ENDPOINT = "trades"
@@ -133,7 +155,7 @@ class Api:
         }
         return self._make_post_request(ENDPOINT, data)
 
-    def positions(self, fund_names: list[str], date: datetime.date) -> Response:
+    def positions(self, fund_names: list[str], date: datetime.date) -> dict:
         """Positions for the fund on a specific date."""
 
         ENDPOINT = "positionData"
@@ -146,7 +168,7 @@ class Api:
 
     def performance(
         self, fund_name: str, start_date: datetime.date, end_date: datetime.date
-    ) -> Response:
+    ) -> dict:
         """Rate of return in multiple frequencies along with fees."""
 
         ENDPOINT = "performanceData"
@@ -158,7 +180,7 @@ class Api:
         }
         return self._make_post_request(ENDPOINT, data)
 
-    def balance_sheet(self, fund_names: list[str], end_date: datetime.date) -> Response:
+    def balance_sheet(self, fund_names: list[str], end_date: datetime.date) -> dict:
         """Balance sheet for one or more funds."""
 
         ENDPOINT = "balanceSheet"
@@ -171,7 +193,7 @@ class Api:
 
     def income_statement(
         self, fund_names: list[str], start_date: datetime.date, end_date: datetime.date
-    ) -> Response:
+    ) -> dict:
         """Income statement for one or more funds."""
 
         ENDPOINT = "incomeStatement"
@@ -182,14 +204,14 @@ class Api:
         }
         return self._make_post_request(ENDPOINT, data)
 
-    def ledger_accounts(self, fund_name: str) -> Response:
+    def ledger_accounts(self, fund_name: str) -> dict:
         """Ledger accounts for the fund."""
 
         ENDPOINT = "ledgerAccount"
         data = {"fundName": fund_name}
         return self._make_post_request(ENDPOINT, data)
 
-    def custodian_accounts(self, fund_name: str) -> Response:
+    def custodian_accounts(self, fund_name: str) -> dict:
         """Custodian accounts for the fund."""
 
         ENDPOINT = "custodianAccount"
@@ -203,7 +225,7 @@ class Api:
         gl_accounts: list[str],
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> Response:
+    ) -> dict:
         """General ledger account details."""
 
         ENDPOINT = "generalLedgerWithCustodian"
@@ -222,7 +244,7 @@ class Api:
         destination_currency: str,
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> Response:
+    ) -> dict:
         """Exchange rates for USD to a specific currency over a date range."""
 
         ENDPOINT = "exchangeRateData"
@@ -230,5 +252,6 @@ class Api:
             "destinationCurrency": destination_currency,
             "startDate": start_date.strftime("%Y-%m-%d"),
             "endDate": end_date.strftime("%Y-%m-%d"),
+            "page": 0,
         }
         return self._make_post_request(ENDPOINT, data)
