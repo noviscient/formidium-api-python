@@ -108,6 +108,17 @@ class Api:
 
         return data["responseBody"]
 
+    def _make_post_request_pages(self, endpoint: str, data: dict) -> dict:
+        init_result = self._make_post_request(endpoint, data)
+        pages = init_result["pageCount"]
+
+        all_page_data = []
+        for page in range(pages):
+            data["page"] = page
+            result = self._make_post_request(endpoint, data)
+            all_page_data.extend(result["resultList"])
+        return {"resultList": all_page_data}
+
     def portfolio_extract(
         self, fund_name: str, start_date: datetime.date, end_date: datetime.date
     ) -> dict:
@@ -164,7 +175,7 @@ class Api:
             "fundList": fund_names,
             "page": 0,
         }
-        return self._make_post_request(ENDPOINT, data)
+        return self._make_post_request_pages(ENDPOINT, data)
 
     def performance(
         self, fund_name: str, start_date: datetime.date, end_date: datetime.date
@@ -254,4 +265,11 @@ class Api:
             "endDate": end_date.strftime("%Y-%m-%d"),
             "page": 0,
         }
+        return self._make_post_request(ENDPOINT, data)
+
+    def fund_list(self) -> dict:
+        """Fund List data from the system."""
+
+        ENDPOINT = "fundList"
+        data = {"page": 0}
         return self._make_post_request(ENDPOINT, data)
