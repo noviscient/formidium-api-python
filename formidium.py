@@ -255,3 +255,12 @@ class Api:
             "page": 0,
         }
         return self._make_post_request(ENDPOINT, data)
+
+    def health_check(
+        self,
+    ) -> dict:
+        """Allows us to perform a System Health CheckUp before commencing any real requests."""
+
+        ENDPOINT = "systemHealthCheckUp"
+        data = {}
+        return self._make_post_request(ENDPOINT, data)
