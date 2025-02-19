@@ -122,3 +122,9 @@ def test_fx_rates(api: Api):
         end_date=datetime.date(2021, 12, 31),
     )
     assert data["pageCount"] > 0
+
+
+def test_health_check(api: Api):
+    data = api.health_check()
+    print(data)
+    assert data["message"] == "OK"
